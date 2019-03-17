@@ -1,7 +1,7 @@
 local lfs = require("lfs")
 local split
 split = require("moonscript.util").split
-local dirsep, dirsep_chars, mkdir, normalize_dir, parse_dir, parse_file, convert_path, format_time, gettime, compile_file_text, write_file, compile_and_write, is_abs_path, path_to_target
+local dirsep, dirsep_chars, mkdir, normalize_dir, parse_dir, parse_file, convert_path, format_time, gettime, pos_to_line, reverse_line_number, compile_file_text, write_file, compile_and_write, is_abs_path, path_to_target
 dirsep = package.config:sub(1, 1)
 if dirsep == "\\" then
   dirsep_chars = "\\/"
@@ -54,6 +54,15 @@ do
       return nil, "LuaSocket needed for benchmark"
     end
   end
+end
+pos_to_line = require("moonscript.util").pos_to_line
+reverse_line_number = function(code, line_table, line_num)
+  for i = line_num, 0, -1 do
+    if line_table[i] then
+      return pos_to_line(code, line_table[i])
+    end
+  end
+  return "unknown"
 end
 compile_file_text = function(text, opts)
   if opts == nil then
@@ -111,6 +120,36 @@ compile_file_text = function(text, opts)
       ""
     }, "\n"))
     return true
+  end
+  if opts.keep_line_number then
+    local line_map = { }
+    for lua_line_number, moon_pos in pairs(posmap_or_err) do
+      line_map[lua_line_number] = reverse_line_number(text, posmap_or_err, lua_line_number)
+    end
+    local aligned_code = ""
+    local lua_line_number = 1
+    local current_moon_line_number = 1
+    for line in string.gmatch(code .. '\n', "(.-)\n") do
+      do
+        local moon_line_number = line_map[lua_line_number]
+        if moon_line_number then
+          local to_next_line = false
+          while current_moon_line_number < moon_line_number do
+            to_next_line = true
+            aligned_code = aligned_code .. '\n'
+            current_moon_line_number = current_moon_line_number + 1
+          end
+          if not (to_next_line) then
+            aligned_code = aligned_code .. ' '
+          end
+        else
+          aligned_code = aligned_code .. ' '
+        end
+      end
+      aligned_code = aligned_code .. line
+      lua_line_number = lua_line_number + 1
+    end
+    code = aligned_code .. '\n'
   end
   return code
 end
